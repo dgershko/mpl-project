@@ -15,6 +15,10 @@ class UrxIface():
         self.listener = multiprocessing.Process(target=urx_listener, args=(ip, pipe[1]))
         self.listener.start()
 
+    def set_speed(self, speed: float, acceleration: float):
+        self.pipe.send("set_speed")
+        self.pipe.send((speed, acceleration))
+
     def get_config(self):
         self.pipe.send("get_config")
         return self.pipe.recv()
@@ -26,7 +30,9 @@ class UrxIface():
             return "invalid config values"
         self.pipe.send("move_to_config")
         self.pipe.send(config)
-        return self.pipe.recv()
+        result = self.pipe.recv()
+        if not result == "success":
+            raise RobotException(f"Failed to move to config: {config}")
     
     def close(self):
         self.pipe.send("close")
@@ -42,6 +48,8 @@ def urx_listener(ip: str, pipe: multiprocessing.Pipe):
     Function to run in a separate process to listen for commands from the main process
     """
     robot = urx.Robot(ip)
+    speed = 0.5
+    acceleration = 0.5
     try:
         while True:
             command = pipe.recv()
@@ -50,12 +58,15 @@ def urx_listener(ip: str, pipe: multiprocessing.Pipe):
                     pipe.send(robot.getj())
                 case "move_to_config":
                     config = pipe.recv()
-                    robot.movej(config, wait=False, acc=0.5, vel=0.5)
+                    robot.movej(config, wait=False, acc=acceleration, vel=speed)
                     sleep(0.5)
                     while robot.is_program_running():
                         sleep(0.1)
                     status = "success" if np.allclose(robot.getj(), config, atol=0.01) else "failed"
                     pipe.send(status)
+                case "set_speed":
+                    speed, acceleration = pipe.recv()
+                    pipe.send("success")
                 case "close":
                     robot.close()
                     break

@@ -10,13 +10,13 @@ class VampInterface:
             vamp.configure_robot_and_planner_with_kwargs(self.robot_name, self.algorithm_name)
         )
     
-    def plan(self, start_config: list[float], goal_config: list[float], obstacles: list[list[float], float] = []):
+    def plan(self, start_config: list[float], goal_config: list[float], obstacles: np.ndarray = []):
         if len(start_config) != 6 or len(goal_config) != 6:
             raise ValueError(f"Invalid start or goal configuration size, expected 6, got {len(start_config)} and {len(goal_config)} respectively.")
 
         env = vamp.Environment()
         for obstacle in obstacles:
-            obstacle_center, obstacle_radius = obstacle[0], obstacle[1]
+            obstacle_center, obstacle_radius = obstacle[:3], obstacle[3]
             env.add_sphere(vamp.Sphere(obstacle_center, obstacle_radius))
 
         if not self.vamp_module.validate(start_config, env):
