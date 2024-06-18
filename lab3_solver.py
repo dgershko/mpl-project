@@ -1,84 +1,67 @@
 from copy import copy
 import numpy as np
 from pathlib import Path
+
 import lab3_consts as consts
+from lab3_utils import get_current_obstacles, execute_plan, animate_plan, transform_obstacles_to_vamp, render_config, static_obstacles
 
 from vamp_iface import VampInterface
 from urx_iface import UrxIface
+from rtde_iface import rtdeRobot
 
-
-static_obstacles = np.load("obstacles.npy")
+# static_obstacles = np.load("obstacles.npy")
 ik_solutions = np.load("ik_solutions.npy")
 
-home = consts.home
+home_config = consts.home
 cube_coords = consts.cube_coords
-init_coords = cube_coords.copy()
-cube_approaches = consts.cube_approaches
-cubes_actual = consts.cubes_actual
+initial_cube_coords = cube_coords.copy()
+cube_approach_configurations = consts.cube_approaches
+cube_actual_configurations = consts.cubes_actual
 
 vamp_iface = VampInterface()
-urx_iface = UrxIface()
-
-def get_cube_obstacles(cube_coords):
-    cube_obstacles = []
-    for cube_coord in cube_coords:
-        cube_obstacles.append(np.append(cube_coord, 0.025))
-    return cube_obstacles
+rtde_robot = rtdeRobot("192.168.56.101")
 
 
-cube_obstacles = get_cube_obstacles(init_coords)
-obstacles = np.vstack((cube_obstacles.copy(), static_obstacles))
-urx_iface.move_to_config(home)
-current_position = home
-for i, cube_approach in enumerate(cube_approaches):
-    cube_obstacles = get_cube_obstacles(cube_coords)
+rtde_robot.move_to_config(home_config)
+current_config = home_config
+for i, cube_approach_config in enumerate(cube_approach_configurations):
+    if i < 2:
+        continue
     # approach cube
-    obstacles = np.vstack((cube_obstacles.copy(), static_obstacles))
-    plan = vamp_iface.plan(current_position, cube_approach, obstacles)
-    for configuration in plan:
-        urx_iface.move_to_config(configuration)
-    current_position = cube_approach
-    # grab cube
-    obstacles = np.vstack((get_cube_obstacles(cube_coords[:i] + cube_coords[i+1:]), static_obstacles))
-    plan = vamp_iface.plan(current_position, cubes_actual[i], obstacles)
-    for configuration in plan:
-        urx_iface.move_to_config(configuration)
-    current_position = cubes_actual[i]
-    # lift cube
-    plan = vamp_iface.plan(current_position, cube_approach, obstacles)
-    for configuration in plan:
-        urx_iface.move_to_config(configuration)
+    obstacles = get_current_obstacles(cube_coords)
+    vamp_obstacles = transform_obstacles_to_vamp(obstacles)
+    try:
+        plan = vamp_iface.plan(current_config, cube_approach_config, vamp_obstacles)
+    except:
+        render_config(cube_approach_config, obstacles)
+        raise
+    print(f"Moving to cube {i}")
+    # rtde_robot.execute_plan(plan)
+    rtde_robot.execute_plan(plan)
+    current_config = cube_approach_config
 
-    current_position = cube_approach
+    # grab cube
+    obstacles = get_current_obstacles(cube_coords[:i] + cube_coords[i+1:])
+    vamp_obstacles = transform_obstacles_to_vamp(obstacles)
+    plan = [current_config, cube_actual_configurations[i]]
+    print(f"Grabbing cube {i}")
+    rtde_robot.execute_plan(plan)
+    current_config = cube_actual_configurations[i]
+
+    # lift cube
+    plan = [current_config, cube_approach_config]
+    print(f"Lifting cube {i}")
+    rtde_robot.execute_plan(plan)
+    current_config = cube_approach_config
+
     # place cube
     near_config = ik_solutions[i]
-    plan = vamp_iface.plan(current_position, near_config, obstacles)
-    for configuration in plan:
-        urx_iface.move_to_config(configuration)
+    plan = vamp_iface.plan(current_config, near_config, vamp_obstacles)
+    print(f"Placing cube {i}")
+    rtde_robot.execute_plan(plan)
+    current_config = near_config
 
-    current_position = near_config
-    # plan_waypoints_with_obstacles.append([near_config, obstacles.copy()])
-    # update cube position to target position
-    cube_coords[i] = consts.dgershko_cubes[i]
+    cube_coords[i] = consts.dgershko_cubes[i] # update cube coords
 
-obstacles = get_cube_obstacles(cube_coords) + static_obstacles
-# plan_waypoints_with_obstacles.append([home, obstacles]) # return to home
-# plan.extend(vamp_iface.plan(current_position, home, obstacles))
 
-# for configuration in plan:
-#     print(configuration)
-# exit()
-
-# import vamp
-# from vamp import pybullet_interface as vpb
-# robot_dir = Path(__file__).parent.parent / 'resources' / 'ur5'
-# sim = vpb.PyBulletSimulator(str(robot_dir / f"ur5_spherized.urdf"), vamp.ROBOT_JOINTS['ur5'], True)
-# for obstacle in obstacles:
-#     sim.add_sphere(obstacle[1], obstacle[0])
-# sim.animate(plan)
-
-# for (waypoint, obstacles) in plan_waypoints_with_obstacles:
-#     print(waypoint)
-#     for obstacle in obstacles:
-#         print("\t", obstacle)
 
