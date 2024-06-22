@@ -3,7 +3,6 @@ import numpy as np
 from urx import RobotException
 import multiprocessing
 from time import sleep, time
-from urx import Pose
 
 class UrxIface():
     """

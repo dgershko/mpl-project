@@ -40,9 +40,5 @@ class VampInterface:
             if vamp.ur5.validate(random_config_vector, env):
                 return random_config_vector
 
-    def solve_ik(self, position):
-        solutions = vamp.ur5.get_inverse_kinematics_solutions(position[0], position[1], position[2])
-        return [solution.to_list() for solution in solutions]
-    
     def solve_fk(self, config):
         return [[sphere.x, sphere.y, sphere.z] for sphere in vamp.ur5.fk(config)]
