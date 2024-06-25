@@ -14,9 +14,9 @@ class rtdeRobot():
     def move_to_config(self, config: list[float], speed: float = 1, acceleration: float = 1.4, is_async: bool = False):
         self.control.moveJ(config, speed, acceleration, is_async)
     
-    def execute_plan(self, plan: list[list[float]], speed: float = 1, acceleration: float = 1.4, blend: float = 0.03, is_async: bool = False):
+    def execute_plan(self, plan: list[list[float]], speed: float = 1, acceleration: float = 1.4, blend: float = 0.01, is_async: bool = False):
         plan = np.array(plan)
-        plan_with_params = np.array([np.concatenate([config, [speed, acceleration, blend]]) for config in plan], is_async)
+        plan_with_params = np.array([np.concatenate([config, [speed, acceleration, blend]]) for config in plan])
         self.control.moveJ(plan_with_params)
     
     def stop(self, is_async: bool = False):
