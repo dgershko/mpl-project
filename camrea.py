@@ -2,10 +2,14 @@ import pyrealsense2 as rs
 import numpy as np
 import cv2
 
-from env_consts import space_coords, obstacle_blocks
+from env_consts import working_space_coords, obstacle_blocks
 
 
 def detect_obstacle(bg_removed, grey_color=(153, 153, 153)):
+    """
+    Detecting objects on the image with background removed (all the objects further then the clipping_distance)
+    Return list of rectengulars around objects
+    """
     mask = cv2.inRange(bg_removed, np.array(grey_color) - 10, np.array(grey_color) + 10)
     mask = cv2.bitwise_not(mask)
 
@@ -21,6 +25,11 @@ def detect_obstacle(bg_removed, grey_color=(153, 153, 153)):
 
 
 def get_world_coordinates(intrinsics, camera_pose, x, y, depth):
+    """
+    Calculating real world coordinates using Eular rotation matrix, depend on position of the camera in space, rotation of the camera,
+    placment of the object on the image and depth to the object.
+    Returns coordinates [x,y,z]
+    """
     X = (x - intrinsics.ppx) / intrinsics.fx * depth
     Y = (y - intrinsics.ppy) / intrinsics.fy * depth
     Z = depth
@@ -37,30 +46,8 @@ def get_world_coordinates(intrinsics, camera_pose, x, y, depth):
     point_world = rotation_matrix.dot(point_camera) + camera_position
     return point_world
 
-def is_point_in_cube(point, cube):
-    x_min, y_min, z_min = np.min(cube, axis=0)
-    x_max, y_max, z_max = np.max(cube, axis=0)
-
-    return x_min <= point[0] <= x_max and y_min <= point[1] <= y_max and z_min <= point[2] <= z_max
-
-
-def filter_obstacles(obstacles, points):
-    non_intersecting_obstacles = []
-
-    for obstacle in obstacles:
-        intersects = False
-        for point in points:
-            if is_point_in_cube(point, obstacle):
-                intersects = True
-                break
-        if not intersects:
-            non_intersecting_obstacles.append(obstacle)
-
-    return np.array(non_intersecting_obstacles)
 
 def is_obstacle_in_space(obstacle, space):
-    """
-    """
     x_min, y_min, z_min = np.min(space, axis=0)
     x_max, y_max, z_max = np.max(space, axis=0)
 
@@ -71,6 +58,10 @@ def is_obstacle_in_space(obstacle, space):
 
 
 def filter_obstacles_in_space(obstacles, space):
+    """
+    Checks if the obstacles are in workspace.
+    Returns list of obstacles in workspace
+    """
     inside_obstacles = []
 
     for obstacle in obstacles:
@@ -80,6 +71,10 @@ def filter_obstacles_in_space(obstacles, space):
     return np.array(inside_obstacles)
 
 def filter_seen_obstacles(seen_obstacles, obstacles):
+    """
+    Checks if obstacles that on image are not obstacles that already seen, or initial obstacles.
+    Returns list of new obstacles, that never seen before
+    """
     outside_obstacles = []
     for obstacle in obstacles:
         intersects = False
@@ -90,61 +85,6 @@ def filter_seen_obstacles(seen_obstacles, obstacles):
             if not intersects:
                 outside_obstacles.append(obstacle)
     return np.array(outside_obstacles)
-
-
-def obstacles(pipeline, align, clipping_distance, pose, seen_obstacles):
-    
-    frames = pipeline.wait_for_frames()
-
-    aligned_frames = align.process(frames)
-
-    aligned_depth_frame = aligned_frames.get_depth_frame()
-    color_frame = aligned_frames.get_color_frame()
-
-    depth_image = np.asanyarray(aligned_depth_frame.get_data())
-    color_image = np.asanyarray(color_frame.get_data())
-
-    grey_color = 153
-    depth_image_3d = np.dstack((depth_image, depth_image, depth_image))
-    bg_removed = np.where((depth_image_3d > clipping_distance) | \
-            (depth_image_3d <= 0), grey_color, color_image)
-
-    bounding_rectangles = detect_obstacle(bg_removed)
-
-    obstacles = []
-
-    for (x, y, w, h) in bounding_rectangles:
-        temp = []
-        cx_mid, cy_mid = x + w // 2, y + h // 2
-        if 0 <= cy_mid <= depth_image.shape[0] and 0 <= cx_mid <= depth_image.shape[1]:
-            mid_depth = aligned_depth_frame.get_distance(cx_mid, cy_mid)
-            corners_2d = [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
-            for (cx, cy) in corners_2d:
-                corner_3d_world = get_world_coordinates(color_frame.profile.as_video_stream_profile().intrinsics, pose, cx, cy, mid_depth)
-                corner_3d_world_back = get_world_coordinates(color_frame.profile.as_video_stream_profile().intrinsics, pose, cx, cy, mid_depth + 0.05)
-                temp.append(corner_3d_world)
-                temp.append(corner_3d_world_back)
-                cv2.putText(bg_removed, f"({corner_3d_world[0]:.2f}, {corner_3d_world[1]:.2f}, {corner_3d_world[2]:.2f})", (cx, cy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-            cv2.rectangle(bg_removed, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            obstacles.append(temp)
-    obstacles = np.array(obstacles)
-    obstacles = filter_obstacles_in_space(obstacles, np.array(space_coords))
-    obstacles = filter_seen_obstacles(seen_obstacles, obstacles)
-    if len(obstacles) > 0:
-        print(obstacles)
-    if len(seen_obstacles) != 0 and len(obstacles) != 0:
-        seen_obstacles = np.concatenate((seen_obstacles,obstacles))
-    elif len(obstacles) != 0:
-        seen_obstacles = obstacles
-
-    depth_colormap = cv2.applyColorMap(
-        cv2.convertScaleAbs(depth_image, alpha=0.09), cv2.COLORMAP_JET)
-    images = np.hstack((bg_removed, depth_colormap))
-
-    cv2.namedWindow('Recorder Realsense', cv2.WINDOW_AUTOSIZE)
-    cv2.imshow('Recorder Realsense', images)
-    return obstacles
-
 
 class rsCamera():
     def __init__(self):
@@ -199,61 +139,10 @@ class rsCamera():
                 obstacles.append(temp.copy())
         obstacles = np.array(obstacles)
         print(f"Initial obstacles: {obstacles}")
-        obstacles = filter_obstacles_in_space(obstacles, np.array(space_coords))
+        obstacles = filter_obstacles_in_space(obstacles, np.array(working_space_coords))
         print(f"Obstacles after filtering with space: {obstacles}")
         obstacles = filter_seen_obstacles(self.seen_obstacles, obstacles)
         print(f"Obstacles after filtering with other obstacles: {obstacles}")
         if len(obstacles) != 0:
             self.seen_obstacles = np.concatenate((self.seen_obstacles,obstacles))
         return obstacles
-    
-    def watch(self, pose):
-        while True:
-            frames = self.pipeline.wait_for_frames()
-            aligned_frames = self.align.process(frames)
-
-            aligned_depth_frame = aligned_frames.get_depth_frame()
-            color_frame = aligned_frames.get_color_frame()
-
-            depth_image = np.asanyarray(aligned_depth_frame.get_data())
-            color_image = np.asanyarray(color_frame.get_data())
-
-            grey_color = 153
-            depth_image_3d = np.dstack((depth_image, depth_image, depth_image))
-            bg_removed = np.where((depth_image_3d > self.clipping_distance) | \
-                    (depth_image_3d <= 0), grey_color, color_image)
-
-            bounding_rectangles = detect_obstacle(bg_removed)
-
-            obstacles = []
-
-            for (x, y, w, h) in bounding_rectangles:
-                temp = []
-                cx_mid, cy_mid = x + w // 2, y + h // 2
-                if 0 <= cy_mid <= depth_image.shape[0] and 0 <= cx_mid <= depth_image.shape[1]:
-                    mid_depth = aligned_depth_frame.get_distance(cx_mid, cy_mid)
-                    corners_2d = [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
-                    for (cx, cy) in corners_2d:
-                        corner_3d_world = get_world_coordinates(color_frame.profile.as_video_stream_profile().intrinsics, pose, cx, cy, mid_depth)
-                        corner_3d_world_back = get_world_coordinates(color_frame.profile.as_video_stream_profile().intrinsics, pose, cx, cy, mid_depth + 0.05)
-                        temp.append(corner_3d_world)
-                        temp.append(corner_3d_world_back)
-                        cv2.putText(bg_removed, f"({corner_3d_world[0]:.2f}, {corner_3d_world[1]:.2f}, {corner_3d_world[2]:.2f})", (cx, cy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                    cv2.rectangle(bg_removed, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                    obstacles.append(temp)
-            obstacles = np.array(obstacles)
-            obstacles = filter_obstacles_in_space(obstacles, np.array(space_coords))
-            print(f"Obstacles after filtering with space: {obstacles}")
-            obstacles = filter_seen_obstacles(self.seen_obstacles, obstacles)
-            print(f"Obstacles after filtering with other obstacles: {obstacles}")
-            
-            if len(obstacles) != 0:
-                self.seen_obstacles = np.concatenate((self.seen_obstacles,obstacles))
-                print(obstacles)
-
-            depth_colormap = cv2.applyColorMap(
-                cv2.convertScaleAbs(depth_image, alpha=0.09), cv2.COLORMAP_JET)
-            images = np.hstack((bg_removed, depth_colormap))
-
-            cv2.namedWindow('Recorder Realsense', cv2.WINDOW_AUTOSIZE)
-            cv2.imshow('Recorder Realsense', images)
