@@ -22,7 +22,7 @@ def calculate_cuboid(points):
 
 def transform_to_vamp_coords(point):
     # translate by -0.85 in z
-    point = np.array(point) + np.array([0, 0, 0.71])
+    point = np.array(point) + np.array([-0.01, 0.02, 0.61])
     # rotate 90 degrees clockwise around z axis
     point = np.array([point[1], -point[0], point[2]])
     return point

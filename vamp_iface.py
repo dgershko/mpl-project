@@ -7,9 +7,9 @@ from concurrent.futures import ProcessPoolExecutor
 
 def _transform_to_vamp_coords(point):
     # translate by -0.85 in z
-    point = np.array(point) + np.array([-0.01, 0.02, z_offset])
+    point = np.array(point)
     # rotate 90 degrees clockwise around z axis
-    point = np.array([point[1], -point[0], point[2]])
+    point = np.array([point[1], -point[0], point[2]]) + np.array([0.00, -0.03, z_offset])
     return point
 
 def _get_cuboid_transform(points):
@@ -123,16 +123,14 @@ class VampInterface:
         """
         For cuboid obstacles defined using points in real coords
         """
-        collides_map = {}
+        collides = []
         for name, obstacle in obstacle_dict.items():
             tmp_env = vamp.Environment()
             center, euler, half_extents = _get_cuboid_transform(obstacle)
             tmp_env.add_cuboid(vamp.Cuboid(center, euler, half_extents))
-            if self.vamp_module.validate(config, tmp_env):
-                collides_map[name] = False
-            else:
-                collides_map[name] = True
-        return collides_map
+            if not self.vamp_module.validate(config, tmp_env):
+                collides.append(name)
+        print(f"collides: {collides}")
     
     def calibrate_z(self, config, calibration_obstacle):
         """
@@ -146,7 +144,7 @@ class VampInterface:
             point = np.array([point[1], -point[0], point[2]])
             return point
     
-        initial_z = 3
+        initial_z = 0
         step_size = 0.01
         z = initial_z
         while True:
@@ -159,4 +157,4 @@ class VampInterface:
             tmp_env.add_cuboid(vamp.Cuboid(center, euler, half_extents))
             if not self.vamp_module.validate(config, tmp_env):
                 return z # collision detected, critical z found
-            z -= step_size
+            z += step_size

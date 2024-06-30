@@ -5,7 +5,7 @@ from matplotlib import pyplot as plt
 from vamp import pybullet_interface as vpb
 from pathlib import Path
 from lab3_consts import home
-from env_consts import cubes
+from env_consts import obstacle_blocks
 from rtde_iface import rtdeRobot
 # robot = rtdeRobot("192.168.0.10")
 
@@ -37,7 +37,7 @@ def calculate_cuboid(points):
 urdf_path = str(Path(__file__).parent / "ur5" / "ur5_spherized.urdf")
 sim = vpb.PyBulletSimulator(urdf_path, vamp.ROBOT_JOINTS['ur5'], True)
 
-for cube in cubes:
+for cube in obstacle_blocks:
     vamp_cube = np.array([transform_to_vamp_coords(point) for point in cube])
     center, euler, half_extents = calculate_cuboid(vamp_cube)
     print(f"Center: {center}, Euler: {euler}, Half extents: {half_extents}")

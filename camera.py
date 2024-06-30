@@ -4,7 +4,7 @@ import cv2
 
 from env_consts import working_space_coords, obstacle_blocks
 
-class rsCamera():
+class RSCamera():
     def __init__(self):
         self.pipeline = rs.pipeline()
         self.config = rs.config()
@@ -24,7 +24,12 @@ class rsCamera():
         self.align = rs.align(self.align_to)
         self.seen_obstacles = np.array(obstacle_blocks)
 
-    def get_obstacles(self, pose):
+    def get_obstacles(self, pose: list[float], verbose=False) -> np.ndarray:
+        """
+        :param pose: robot pose
+        :param verbose: print debug info
+        :return: list of obstacles in the workspace
+        """
         frames = self.pipeline.wait_for_frames()
         aligned_frames = self.align.process(frames)
 
@@ -36,15 +41,14 @@ class rsCamera():
 
         grey_color = 153
         depth_image_3d = np.dstack((depth_image, depth_image, depth_image))
-        bg_removed = np.where((depth_image_3d > self.clipping_distance) | \
-                (depth_image_3d <= 0), grey_color, color_image)
+        bg_removed = np.where((depth_image_3d > self.clipping_distance) | (depth_image_3d <= 0), grey_color, color_image)
 
         bounding_rectangles = detect_obstacle(bg_removed)
 
         obstacles = []
 
         for (x, y, w, h) in bounding_rectangles:
-            temp = []
+            tmp_obstacle = []
             cx_mid, cy_mid = x + w // 2, y + h // 2
             if 0 <= cy_mid <= depth_image.shape[0] and 0 <= cx_mid <= depth_image.shape[1]:
                 mid_depth = aligned_depth_frame.get_distance(cx_mid, cy_mid)
@@ -52,15 +56,18 @@ class rsCamera():
                 for (cx, cy) in corners_2d:
                     corner_3d_world = get_world_coordinates(color_frame.profile.as_video_stream_profile().intrinsics, pose, cx, cy, mid_depth)
                     corner_3d_world_back = get_world_coordinates(color_frame.profile.as_video_stream_profile().intrinsics, pose, cx, cy, mid_depth + 0.05)
-                    temp.append(corner_3d_world)
-                    temp.append(corner_3d_world_back)
-                obstacles.append(temp.copy())
+                    tmp_obstacle.append(corner_3d_world)
+                    tmp_obstacle.append(corner_3d_world_back)
+                obstacles.append(tmp_obstacle)
         obstacles = np.array(obstacles)
-        print(f"Initial obstacles: {obstacles}")
-        obstacles = filter_obstacles_in_space(obstacles, np.array(working_space_coords))
-        print(f"Obstacles after filtering with space: {obstacles}")
+        if verbose:
+            print(f"Initial obstacles: {obstacles}")
+        obstacles = filter_workspace_obstacles(obstacles, np.array(working_space_coords))
+        if verbose:
+            print(f"Obstacles after filtering with space: {obstacles}")
         obstacles = filter_seen_obstacles(self.seen_obstacles, obstacles)
-        print(f"Obstacles after filtering with other obstacles: {obstacles}")
+        if verbose:
+            print(f"Obstacles after filtering with other obstacles: {obstacles}")
         if len(obstacles) != 0:
             self.seen_obstacles = np.concatenate((self.seen_obstacles,obstacles))
         return obstacles
@@ -117,7 +124,7 @@ def is_obstacle_in_space(obstacle, space):
     return True
 
 
-def filter_obstacles_in_space(obstacles, space):
+def filter_workspace_obstacles(obstacles, space):
     """
     Checks if the obstacles are in workspace.
     Returns list of obstacles in workspace

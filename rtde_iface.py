@@ -9,7 +9,9 @@ def rtde_retry_decorator(method):
     def wrapper(self, *args, **kwargs):
         try:
             return method(self, *args, **kwargs)
-        except:
+        except Exception as e:
+            print(f"in method {method.__name__} Error: {e}")
+            print("attempting reconnect...")
             self._reconnect()
             return method(self, *args, **kwargs)
     return wrapper

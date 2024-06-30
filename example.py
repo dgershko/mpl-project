@@ -3,7 +3,8 @@ import time
 
 from vamp_iface import VampInterface
 from rtde_iface import rtdeRobot
-from env_consts import obstacle_blocks, target_pose, ref_point_config, home, cube_coords, named_blocks, ref_standing_block
+from env_consts import obstacle_blocks, target_pose, ref_point_config, home, cube_coords, named_blocks, ref_standing_block, calibration_config
+from camrea import RSCamera
 ip = "192.168.56.101" # sim IP
 # ip = "192.168.0.10" # real robot IP
 
@@ -205,6 +206,11 @@ def calibrate_z():
 def dynamic_obstacle_planning():
     robot = rtdeRobot(ip)
     vamp_iface = VampInterface()
+    camera = RSCamera()
+
+    robot.start_freedrive_mode()
+    input()
+    robot.end_freedrive_mode()
 
     start_config = home
     target_config = robot.get_IK(target_pose, home)
@@ -216,7 +222,7 @@ def dynamic_obstacle_planning():
     robot.execute_plan(plan, speed=1.7, acceleration=0.5, is_async=True)
     while not np.allclose(robot.get_config(), target_config, atol=1e-2):
         vamp_iface.reset_dynamic_obstacles()
-        dynamic_obstacles: list[list[float]] = ... # get dynamic obstacles from the camera
+        dynamic_obstacles: list[list[float]] = camera.get_obstacles()
         vamp_iface.set_dynamic_obstacles(dynamic_obstacles)
         if not vamp_iface.validate_plan(plan):
             print("Plan is invalid, replanning")
@@ -226,8 +232,38 @@ def dynamic_obstacle_planning():
     robot.close()
 # =================================================================================================
 
-
 if __name__ == "__main__":
+    robot = rtdeRobot("192.168.0.10")
+    camera = RSCamera()
+    # robot.start_freedrive_mode()
+    # print("started freedrive")
+    # input()
+    # robot.end_freedrive_mode()
+    # exit()
+    pose = robot.get_pose()
+    while True:
+        try:
+            print(camera.get_obstacles(pose))
+            input()
+        except KeyboardInterrupt:
+            break
+    # camera.watch(pose)
+    exit()
+    time_start = time.time()
+    counter = 0
+    while True:
+        try:
+            counter += 1
+            obstacles = camera.get_obstacles(pose)
+            print(counter, obstacles, end = "\r")
+        except KeyboardInterrupt:
+            break
+    time_end = time.time()
+    print(f"time taken: {(time_end - time_start) / counter}")
+    print(obstacles)
+    robot.close()
+    # from env_consts import big_standing_block
+    # print(robot.get_config())
     # vamp_render_example()
     # vamp_plan_and_execute_example()
     # vamp_plan_and_render_example()
@@ -236,4 +272,5 @@ if __name__ == "__main__":
     # vamp_iface_example()
     # calibrate_z()
     # dynamic_obstacle_planning()
+    # robot.close()
     pass
