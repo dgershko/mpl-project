@@ -17,6 +17,7 @@ This is a project for the Technion's Motion Planning Lab.
 ```cd vamp && pip install .```
 3. [If using the ur_iface] Install the URX python package by running ```pip install urx```
 4. [If using the rtde_iface, recommended] Install the RTDE python package by running ```pip install ur_rtde```
+5. To use the depth camera, install the cv2 and pyrealsense2 packages by running ```pip install opencv-python pyrealsense2``` (note, this requires python3.11 or **lower**)
 
 # Containerization
 There's already an existing Docker image for running the robot's simulation. 
